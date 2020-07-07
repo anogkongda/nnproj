@@ -1,0 +1,13 @@
+data/
+data_large/
+checkpoint/
+data_char/
+data_multi/
+data_semi/
+logs/
+.vscode/
+data_multi
+data_semi
+language_order
+*/__pycache__/*
+*.pyc

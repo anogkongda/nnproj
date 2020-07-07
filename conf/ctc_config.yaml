@@ -1,0 +1,68 @@
+#exp name and save dir
+exp_name: 'data_mono/country_crnn_uni'
+checkpoint_dir: 'exp/'
+#/mnt/lustre/sjtu/home/zkz01/ctc/checkpoint/data_mono/Catalan_crnn_uni
+#Data
+data_file: 'data_semi/country'
+resume: ''
+language_one_hot: False
+universal: False
+#resume: '/mnt/lustre/sjtu/home/zkz01/ctc/checkpoint/semi_crnn_uni_universal_lid_mme/ctc_best_model.pkl'
+language_order: './language_order'
+left_ctx: 0
+right_ctx: 2
+n_skip_frame: 2
+n_downsample: 2
+num_workers: 1
+shuffle_train: True
+feature_dim: 40
+# This one is auto
+output_class_dim: 46
+mel: False
+feature_type: "fbank"
+
+#Model
+rnn_input_size: 120
+rnn_hidden_size: 384
+rnn_layers: 4
+rnn_type: "nn.LSTM"
+bidirectional: False
+batch_norm: True
+drop_out: 0.2
+
+#CNN
+add_cnn: True
+layers: 2
+channel: "[(1, 32), (32, 32)]"
+kernel_size: "[(3, 3), (3, 3)]"
+stride: "[(1, 2), (2, 2)]"
+padding: "[(1, 1), (1, 1)]"
+pooling: "None"
+batch_norm: True
+activation_function: "relu"
+
+#[Training]
+use_gpu: True
+init_lr: 0.001
+num_epoches: 500
+end_adjust_acc: 2
+lr_decay: 0.5
+batch_size: 8
+weight_decay: 0.0005
+seed: 1
+verbose_step: 50
+
+#[test]
+from_multi: False
+test_scp_path: 'data_semi/country/test/feats.scp'
+test_lab_path: 'data_semi/country/test/lab.txt'
+test_kws_lab_path: 'data_semi/country/test/kwlab.txt'
+keyword_path: 'data_semi/country/test/keyword'
+decode_type: "soft"
+separator: "<eow>"
+beam_width: 10
+lm_alpha: 0.1
+#for uni
+lm_path: 'data_semi/country/lm_phone_bg.arpa'
+#lm_path: './lm_phone_bg.arpa'
+
