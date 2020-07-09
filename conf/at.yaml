@@ -1,0 +1,11 @@
+generator: "fgsm"
+scheduler: "pas"
+epsilon: 0.1
+start_epoch: 0
+end_epoch: 1000
+prob: 1.0
+alpha: 0.3
+
+
+pas_percent: 0.5
+

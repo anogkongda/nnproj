@@ -17,13 +17,15 @@ from models.model_ctc import *
 #from warpctc_pytorch import CTCLoss # use built-in nn.CTCLoss
 from utils.data_loader import Vocab, SpeechDataset, SpeechDataLoader
 
+from AT import AT
+
 supported_rnn = {'nn.LSTM':nn.LSTM, 'nn.GRU': nn.GRU, 'nn.RNN':nn.RNN}
 supported_activate = {'relu':nn.ReLU, 'tanh':nn.Tanh, 'sigmoid':nn.Sigmoid}
 
 parser = argparse.ArgumentParser(description='cnn_lstm_ctc')
 parser.add_argument('--conf', default='conf/ctc_config.yaml' , help='conf file with argument of LSTM and training')
 
-def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print_every=20, is_training=True, lids=None):
+def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print_every=20, is_training=True, lids=None, advT=None):
     if is_training:
         model.train()
     else:
@@ -40,7 +42,9 @@ def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print
         if lids is not None:
             xx = lids.repeat(B,T,1)
             inputs = torch.cat((inputs,xx), dim=-1)
+
         inputs = inputs.to(device)
+        inputs.requires_grad_()
         input_sizes = input_sizes.to(device)
         targets = targets.to(device)
         target_sizes = target_sizes.to(device)
@@ -50,6 +54,7 @@ def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print
         input_sizes = (input_sizes * out_len).long()
         loss = loss_fn(out, targets, input_sizes, target_sizes)
         loss /= batch_size
+
         cur_loss += loss.item()
         total_loss += loss.item()
         prob, index = torch.max(out, dim=-1)
@@ -64,9 +69,10 @@ def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print
         
         if is_training:    
             optimizer.zero_grad()
+            loss = advT.train(inputs, optimizer, loss, data, model, loss_fn, lids, device)
             loss.backward()
-            #nn.utils.clip_grad_norm_(model.parameters(), 400)
             optimizer.step()
+
     average_loss = total_loss / (i+1)
     training = "Train" if is_training else "Valid"
     print("Epoch %d %s done, total_loss: %.4f, total_wer: %.4f" % (epoch_id, training, average_loss, total_errs / total_tokens))
@@ -163,6 +169,7 @@ def main(conf):
             pretrained_dict[new_key] = v
         model.load_state_dict(pretrained_dict)
         
+    advT = AT(opts)
     
     model = model.to(device)
     num_params = 0
@@ -207,6 +214,8 @@ def main(conf):
         if count >= num_epoches:
             break
         count += 1
+
+        advT.step()
         
         if adjust_rate_flag:
             learning_rate *= decay
@@ -216,9 +225,9 @@ def main(conf):
         
         print("Start training epoch: %d, learning_rate: %.5f" % (count, learning_rate))
         
-        train_acc, loss = run_epoch(count, model, train_loader, loss_fn, device, optimizer=optimizer, print_every=opts.verbose_step, is_training=True, lids=lid if opts.language_one_hot else None)
+        train_acc, loss = run_epoch(count, model, train_loader, loss_fn, device, optimizer=optimizer, print_every=opts.verbose_step, is_training=True, lids=lid if opts.language_one_hot else None, advT=advT)
         loss_results.append(loss)
-        acc, dev_loss = run_epoch(count, model, dev_loader, loss_fn, device, optimizer=None, print_every=opts.verbose_step, is_training=False, lids=lid if opts.language_one_hot else None)
+        acc, dev_loss = run_epoch(count, model, dev_loader, loss_fn, device, optimizer=None, print_every=opts.verbose_step, is_training=False, lids=lid if opts.language_one_hot else None,  advT=None)
         print("loss on dev set is %.4f" % dev_loss)
         dev_loss_results.append(dev_loss)
         dev_cer_results.append(acc)
