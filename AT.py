@@ -36,7 +36,7 @@ class AT:
     # FIXME: too many arguments
     def train(self, x, optimizer, loss, data, model, loss_fn, lids, device):
         if self.epoch < self.at_config.start_epoch or self.epoch > self.at_config.end_epoch or np.random.binomial(1, self.at_config.prob) == 0:
-            return
+            return loss
 
         # 1. propagate the normal training gradient for AT
         loss.backward()
@@ -82,7 +82,7 @@ class ATScheduler:
             return value
 
         if (key == "epsilon"):
-            epsilon = min(nepoch / info["nepochs"] * (at_config.pas_percent), 1) * value
+            epsilon = min(nepoch / (info["nepochs"] * at_config.pas_percent), 1) * value
             return epsilon
 
         if (key == "save"):
@@ -93,13 +93,13 @@ class ATSampleGenerator:
 
     @staticmethod
     def fgsm_generate(x, at_config):
-        x_fgsm = x.cpu() + np.sign(x.grad.cpu()) * at_config.epsilon
-        return x_fgsm
+        x_adv = x.cpu() + np.sign(x.grad.cpu()) * at_config.epsilon
+        return x_adv
 
     @staticmethod
     def random_generate(x, at_config):
-        x = x + torch.FloatTensor(at_config.epsilon * np.sign(np.random.rand(x.shape)))
-        return x
+        x_adv = x.cpu() + torch.FloatTensor(at_config.epsilon * np.sign(np.random.rand(x.shape)))
+        return x_adv
 
 
 class Config:
