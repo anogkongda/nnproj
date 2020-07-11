@@ -1,10 +1,10 @@
 #exp name and save dir
-exp_name: 'data_mono/country_crnn_uni'
+exp_name: 'data_mono_fgsm_pas_swish_multi_fgsm_pas_swish_mono/country_crnn_uni'
 checkpoint_dir: 'exp/'
 #/mnt/lustre/sjtu/home/zkz01/ctc/checkpoint/data_mono/Catalan_crnn_uni
 #Data
 data_file: 'data_semi/country'
-resume: '/mnt/lustre/sjtu/home/ww089/local/workspace/nnproj/checkpoint/multi_crnn_uni_semi/ctc_best_model.pkl'
+resume: '/mnt/lustre/sjtu/home/ww089/local/workspace/nnproj/exp/semi_crnn_uni_universal_fgsm_pas_swish/ctc_best_model.pkl'
 language_one_hot: False
 universal: False
 #resume: '/mnt/lustre/sjtu/home/zkz01/ctc/checkpoint/semi_crnn_uni_universal_lid_mme/ctc_best_model.pkl'
@@ -39,7 +39,7 @@ stride: "[(1, 2), (2, 2)]"
 padding: "[(1, 1), (1, 1)]"
 pooling: "None"
 batch_norm: True
-activation_function: "relu"
+activation_function: "swish"
 
 #[Training]
 use_gpu: True
@@ -66,5 +66,4 @@ lm_alpha: 0.1
 lm_path: 'data_semi/country/lm_phone_bg.arpa'
 #lm_path: './lm_phone_bg.arpa'
 
-
-at_config: "conf/at.yaml"
+at_config: 'conf/at.yaml'

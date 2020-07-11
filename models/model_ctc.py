@@ -48,7 +48,7 @@ class LayerCNN(nn.Module):
         else:
             self.conv = nn.Conv1d(in_channel, out_channel, kernel_size=kernel_size, stride=stride, padding=padding)
             self.batch_norm = nn.BatchNorm1d(out_channel) if batch_norm else None
-        self.activation = activation_function(inplace=True)
+        self.activation = activation_function()
         if pooling_size is not None and len(kernel_size) == 2:
             self.pooling = nn.MaxPool2d(pooling_size)
         elif len(kernel_size) == 1:

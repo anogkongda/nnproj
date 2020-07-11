@@ -17,10 +17,10 @@ from models.model_ctc import *
 #from warpctc_pytorch import CTCLoss # use built-in nn.CTCLoss
 from utils.data_loader import Vocab, SpeechDataset, SpeechDataLoader
 
-from AT import AT
+from AT import AT, Swish
 
 supported_rnn = {'nn.LSTM':nn.LSTM, 'nn.GRU': nn.GRU, 'nn.RNN':nn.RNN}
-supported_activate = {'relu':nn.ReLU, 'tanh':nn.Tanh, 'sigmoid':nn.Sigmoid}
+supported_activate = {'relu':nn.ReLU, 'tanh':nn.Tanh, 'sigmoid':nn.Sigmoid, 'swish': Swish}
 
 parser = argparse.ArgumentParser(description='cnn_lstm_ctc')
 parser.add_argument('--conf', default='conf/ctc_config.yaml' , help='conf file with argument of LSTM and training')
@@ -69,7 +69,7 @@ def run_epoch(epoch_id, model, data_iter, loss_fn, device, optimizer=None, print
         
         if is_training:    
             optimizer.zero_grad()
-            loss = advT.train(inputs, optimizer, loss, data, model, loss_fn, lids, device)
+            loss = advT.train_mono(inputs, loss, optimizer, data, model, loss_fn, device)
             loss.backward()
             optimizer.step()
 

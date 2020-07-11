@@ -1,5 +1,5 @@
 #exp name and save dir
-exp_name: 'semi_crnn_uni_universal_lid'
+exp_name: 'semi_crnn_uni_universal_fgsm_pas_swish'
 checkpoint_dir: 'exp/'
 
 #Data
@@ -40,12 +40,12 @@ stride: "[(1, 2), (2, 2)]"
 padding: "[(1, 1), (1, 1)]"
 pooling: "None"
 batch_norm: True
-activation_function: "relu"
+activation_function: "swish"
 
 #[Training]
 use_gpu: True
 init_lr: 0.001
-num_epoches: 500
+num_epoches: 80
 end_adjust_acc: 2
 lr_decay: 0.5
 batch_size: 8
@@ -61,3 +61,4 @@ beam_width: 10
 # lm_alpha: 0.1
 # lm_path: 'data_multi/Italian/lm_phone_bg.arpa'
 
+at_config: "conf/at.yaml"

@@ -16,10 +16,11 @@ sys.path.append('./')
 from models.model_ctc import *
 #from warpctc_pytorch import CTCLoss # use built-in nn.CTCLoss
 from utils.data_loader import Vocab, SpeechDataset, SpeechDataLoader, UnlabelSpeechDataLoader, UnlabelSpeechDataset
+from AT import AT, Swish
 import pdb
 
 supported_rnn = {'nn.LSTM':nn.LSTM, 'nn.GRU': nn.GRU, 'nn.RNN':nn.RNN}
-supported_activate = {'relu':nn.ReLU, 'tanh':nn.Tanh, 'sigmoid':nn.Sigmoid}
+supported_activate = {'relu':nn.ReLU, 'tanh':nn.Tanh, 'sigmoid':nn.Sigmoid, 'swish': Swish}
 
 parser = argparse.ArgumentParser(description='cnn_lstm_ctc')
 parser.add_argument('--conf', default='conf/multi_config.yaml' , help='conf file with argument of LSTM and training')
@@ -52,16 +53,18 @@ common output: loss, out, batch_size, input_sizes, targets, target_sizes
 '''
 def normal_sup_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset):
     inputs, input_sizes, targets, target_sizes, utt_list = sup_get_data(data, device)
+    inputs.requires_grad_()
     out = model(inputs, set_id=dataset_idx, mmen_grl=False)
     out_len, batch_size, _ = out.size()
     input_sizes = (input_sizes * out_len).long()
     loss = loss_fn(out, targets, input_sizes, target_sizes)
-    return loss, out, batch_size, input_sizes, targets, target_sizes
+    return loss, out, batch_size, input_sizes, targets, target_sizes, inputs
 
 
 
 def dat_sup_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset):
     inputs, input_sizes, targets, target_sizes, utt_list = sup_get_data(data, device)
+    inputs.requires_grad_()
     out,language_out = model(inputs, set_id = dataset_idx)
     out_len, batch_size, _ = out.size()
     input_sizes = (input_sizes * out_len).long()
@@ -74,12 +77,14 @@ def dat_sup_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset):
 
     asr_loss = loss_fn(out, targets, input_sizes, target_sizes)
     loss = asr_loss + language_loss
-    return loss, out, batch_size, input_sizes, targets, target_sizes
+    return loss, out, batch_size, input_sizes, targets, target_sizes, inputs
 
 
 
 def dat_semi_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset):
     inputs, input_sizes, utt_list = data
+    inputs = inputs.to(device)
+    inputs.requires_grad_()
     real_dataset_id = dataset_idx - num_sup_dataset
     out,language_out = model(inputs, set_id = real_dataset_id)
     out_len, batch_size, _ = out.size()
@@ -90,18 +95,20 @@ def dat_semi_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset)
     language_target = language_target.view(-1).long().to(device)
     ce = nn.CrossEntropyLoss(ignore_index=-1,reduction='sum')
     language_loss = ce(language_out, language_target)
-    return language_loss, out, batch_size, input_sizes, 0,0
+    return language_loss, out, batch_size, input_sizes, 0,0, inputs
 
 
 def mme_semi_training(model,loss_fn, data, device, dataset_idx, num_sup_dataset):
     inputs, input_sizes, utt_list = data
+    inputs = inputs.to(device)
+    inputs.requires_grad_()
     real_dataset_id = dataset_idx - num_sup_dataset
     out = model(inputs,set_id=real_dataset_id, mmen_grl=True)
     out_len, batch_size, _ = out.size()
     input_sizes = (input_sizes * out_len).long()
     prob = torch.softmax(out, dim=-1)
     loss = 0.1 * torch.sum(torch.mul(prob,torch.log2(prob+1e-8))) # H(x)
-    return loss, out, batch_size, input_sizes,0,0
+    return loss, out, batch_size, input_sizes,0,0, inputs
 
 def code_from_last_version():
        # if dataset_idx < num_sup_dataset: # supervised
@@ -220,7 +227,7 @@ def code_from_last_version():
     pass
 
 #dat=False, mme=False,language_one_hot=False, maml=False
-def run_epoch(epoch_id, model, data_iter,loss_fn, device,opts,semi_data_iter=None, optimizer=None, print_every=20, is_training=True):
+def run_epoch(epoch_id, model, data_iter,loss_fn, device,opts,semi_data_iter=None, optimizer=None, print_every=20, is_training=True, advT=None):
     if is_training:
         model.train()
     else:
@@ -263,7 +270,7 @@ def run_epoch(epoch_id, model, data_iter,loss_fn, device,opts,semi_data_iter=Non
                     forward_func = mme_semi_training
                 else:
                     continue # no semi-sup training
-            loss, out, batch_size, input_sizes, targets, target_sizes = forward_func(model, loss_fn, data, device, dataset_idx, num_sup_dataset)
+            loss, out, batch_size, input_sizes, targets, target_sizes, inputs = forward_func(model, loss_fn, data, device, dataset_idx, num_sup_dataset)
             loss /= batch_size
             cur_loss += loss.item()
             total_loss += loss.item()
@@ -286,8 +293,8 @@ def run_epoch(epoch_id, model, data_iter,loss_fn, device,opts,semi_data_iter=Non
         #not maml
             if is_training and True:    # maml do not update here
                 optimizer.zero_grad()
+                loss = advT.train(inputs, loss, forward_func, model, loss_fn, data, device, dataset_idx, num_sup_dataset)
                 loss.backward()
-                #nn.utils.clip_grad_norm_(model.parameters(), 400)
                 optimizer.step()
 
         except StopIteration:
@@ -434,11 +441,14 @@ def main(conf):
     loss_results = []
     dev_loss_results = []
     dev_cer_results = []
+
+    advT = AT(opts)
     
     while not stop_train:
         if count >= num_epoches:
             break
         count += 1
+        advT.step()
         
         if adjust_rate_flag:
             learning_rate *= decay
@@ -448,9 +458,9 @@ def main(conf):
         
         print("Start training epoch: %d, learning_rate: %.5f" % (count, learning_rate))
         
-        train_acc, loss = run_epoch(count, model, train_loader,loss_fn, device,opts,semi_loader,optimizer=optimizer, print_every=opts.verbose_step, is_training=True)
+        train_acc, loss = run_epoch(count, model, train_loader,loss_fn, device,opts,semi_loader,optimizer=optimizer, print_every=opts.verbose_step, is_training=True, advT=advT)
         loss_results.append(loss)
-        acc, dev_loss = run_epoch(count, model, dev_loader, loss_fn, device,opts, optimizer=None, print_every=opts.verbose_step, is_training=False)
+        acc, dev_loss = run_epoch(count, model, dev_loader, loss_fn, device,opts, optimizer=None, print_every=opts.verbose_step, is_training=False, advT=None)
         print("loss on dev set is %.4f" % dev_loss)
         dev_loss_results.append(dev_loss)
         dev_cer_results.append(acc)

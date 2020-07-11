@@ -10,7 +10,8 @@ class AT:
 
         at_config_path = getattr(self.config, "at_config", None)
         if not at_config_path:
-            self.train = lambda *args, **kwargs: None
+            self.train = lambda x, loss, *args, **kwargs: loss
+            self.train_mono = lambda x, loss, *args, **kwargs: loss
             self.schedule = lambda key, value, at_config: value
             return
 
@@ -27,14 +28,13 @@ class AT:
 
     def schedule(self, key, value):
         info = {
-                "nepochs": self.nepoch,
+                "nepochs": self.nepochs,
                 "epoch": self.epoch
         }
         return self.schedule_(key, value, info, self.at_config)
 
 
-    # FIXME: too many arguments
-    def train(self, x, optimizer, loss, data, model, loss_fn, lids, device):
+    def train(self, x, loss, forward_func, model, loss_fn, data, device, dataset_idx, num_sup_dataset):
         if self.epoch < self.at_config.start_epoch or self.epoch > self.at_config.end_epoch or np.random.binomial(1, self.at_config.prob) == 0:
             return loss
 
@@ -42,10 +42,25 @@ class AT:
         loss.backward()
 
         # 2. generate AT sample
-        x = self.generate(x, self.at_config)
-        if lids is not None:
-            xx = lids.repeat(B,T,1)
-            x[:,:,-1] = xx
+        x = self.generate(x, self.schedule("epsilon", self.at_config.epsilon))
+        data = (x, *data[1:])
+
+        # 3. retrain model and return loss
+        loss = forward_func(model, loss_fn, data, device, dataset_idx, num_sup_dataset)[0]
+        loss *= self.at_config.alpha
+
+        return loss
+
+    # FIXME: too many arguments
+    def train_mono(self, x, loss, optimizer, data, model, loss_fn, device):
+        if self.epoch < self.at_config.start_epoch or self.epoch > self.at_config.end_epoch or np.random.binomial(1, self.at_config.prob) == 0:
+            return loss
+
+        # 1. propagate the normal training gradient for AT
+        loss.backward()
+
+        # 2. generate AT sample
+        x = self.generate(x, self.schedule("epsilon", self.at_config.epsilon))
 
         # 3. retrain model and return loss
         _, input_sizes, targets, target_sizes, utt_list = data
@@ -72,7 +87,11 @@ class AT:
 class ATScheduler:
 
     @staticmethod
-    def pas_schedule(self, key, value, info, at_config):
+    def dummy_schedule(key, value, info, at_config):
+        return value
+
+    @staticmethod
+    def pas_schedule(key, value, info, at_config):
         supported_schedules = ["lr", "epsilon", "save"]
         requested_info = ["epoch", "nepochs"]
         assert( key in supported_schedules, f"Schedule `{key}' is not supported in PAS" )
@@ -82,7 +101,7 @@ class ATScheduler:
             return value
 
         if (key == "epsilon"):
-            epsilon = min(nepoch / (info["nepochs"] * at_config.pas_percent), 1) * value
+            epsilon = min(info["epoch"] / (info["nepochs"] * at_config.pas_percent), 1) * value
             return epsilon
 
         if (key == "save"):
@@ -92,15 +111,20 @@ class ATScheduler:
 class ATSampleGenerator:
 
     @staticmethod
-    def fgsm_generate(x, at_config):
-        x_adv = x.cpu() + np.sign(x.grad.cpu()) * at_config.epsilon
+    def fgsm_generate(x, epsilon):
+        x_adv = x.cpu() + np.sign(x.grad.cpu()) * epsilon
         return x_adv
 
     @staticmethod
-    def random_generate(x, at_config):
-        x_adv = x.cpu() + torch.FloatTensor(at_config.epsilon * np.sign(np.random.rand(x.shape)))
+    def random_generate(x, epsilon):
+        x_adv = x.cpu() + torch.FloatTensor(epsilon * np.sign(np.random.rand(x.shape)))
         return x_adv
 
 
 class Config:
     pass
+
+
+class Swish:
+    def __call__(self, x):
+        return x * torch.sigmoid(x)

@@ -7,7 +7,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=16G
 
-
 . path.sh
 
 stage=0
